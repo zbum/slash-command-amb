@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: slash-command-amb
+  namespace: slash-command
+  labels:
+    app: slash-command-amb
+spec:
+  type: ClusterIP
+  selector:
+    app: slash-command-amb
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP

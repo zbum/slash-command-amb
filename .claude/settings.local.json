@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:helpdesk.dooray.com)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.toast.com)",
+      "WebFetch(domain:docs.nhncloud.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(make build:*)",
+      "Bash(make help:*)",
+      "Bash(git rm:*)"
+    ]
+  }
+}
