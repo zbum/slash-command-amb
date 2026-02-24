@@ -84,10 +84,17 @@ var zones = []string{"pubo", "fino", "govo", "govi", "pppng"}
 
 const callbackID = "amb-share"
 
+var appToken string
+
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
+	}
+
+	appToken = os.Getenv("DOORAY_APP_TOKEN")
+	if appToken == "" {
+		log.Println("WARNING: DOORAY_APP_TOKEN is not set, token validation disabled")
 	}
 
 	http.HandleFunc("/command", handleCommand)
@@ -116,6 +123,12 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 	var req CommandRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if appToken != "" && req.AppToken != appToken {
+		log.Printf("Invalid appToken: %s", req.AppToken)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -244,39 +257,21 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 직접 응답으로 채널에 메시지 표시
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{})
 
-	go sendMessage(sub.ResponseURL, sub.Channel.ID, selectedZones, taskURL)
-}
-
-func sendMessage(responseURL, channelID string, selectedZones []string, taskURL string) {
 	zonesText := strings.Join(selectedZones, ", ")
 	text := fmt.Sprintf("**[AMB 공유]**\n- Zone: %s\n- 업무 URL: %s", zonesText, taskURL)
 
-	msg := map[string]interface{}{
-		"channelId":    channelID,
+	json.NewEncoder(w).Encode(map[string]interface{}{
 		"responseType": "inChannel",
 		"text":         text,
-	}
+	})
 
-	payload, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("Failed to marshal message: %v", err)
-		return
-	}
-
-	resp, err := http.Post(responseURL, "application/json", bytes.NewReader(payload))
-	if err != nil {
-		log.Printf("Failed to send message: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	log.Printf("Send message response [%d]: %s", resp.StatusCode, string(respBody))
+	log.Printf("AMB shared - zones: %s, url: %s", zonesText, taskURL)
 }
+
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
