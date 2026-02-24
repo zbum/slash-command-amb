@@ -268,16 +268,19 @@ func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
 		}
 		msg := buildZoneMessage(selected)
 		msg["replaceOriginal"] = true
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(msg)
+		msg["responseType"] = "ephemeral"
+		// Must POST to responseUrl to replace the message in Dooray
+		go postToResponseURL(cb.ResponseURL, msg)
+		w.WriteHeader(http.StatusOK)
 
 	case "next":
 		if cb.ActionValue == "" {
 			msg := buildZoneMessage(nil)
 			msg["replaceOriginal"] = true
+			msg["responseType"] = "ephemeral"
 			msg["text"] = "⚠️ 최소 하나의 Zone을 선택해주세요"
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(msg)
+			go postToResponseURL(cb.ResponseURL, msg)
+			w.WriteHeader(http.StatusOK)
 			return
 		}
 		selected := strings.Split(cb.ActionValue, ",")
@@ -285,13 +288,36 @@ func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
 		w.WriteHeader(http.StatusOK)
 
 	case "cancel":
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		go postToResponseURL(cb.ResponseURL, map[string]interface{}{
 			"deleteOriginal": true,
+			"responseType":   "ephemeral",
 		})
+		w.WriteHeader(http.StatusOK)
 
 	default:
 		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func postToResponseURL(responseURL string, msg map[string]interface{}) {
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("Failed to marshal responseUrl payload: %v", err)
+		return
+	}
+
+	log.Printf("POST to responseUrl: %s", string(payload))
+
+	resp, err := http.Post(responseURL, "application/json", bytes.NewReader(payload))
+	if err != nil {
+		log.Printf("Failed to POST to responseUrl: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		log.Printf("responseUrl POST failed [%d]: %s", resp.StatusCode, string(respBody))
 	}
 }
 
