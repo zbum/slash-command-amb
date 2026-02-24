@@ -297,7 +297,9 @@ func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
 		go func() {
 			postToResponseURL(cb.ResponseURL, map[string]interface{}{
 				"deleteOriginal": true,
+				"responseType":   "ephemeral",
 				"channelId":      cb.Channel.ID,
+				"text":           "",
 			})
 			openDialog(cb.Tenant.Domain, cb.Channel.ID, cb.CmdToken, cb.TriggerID, selected)
 		}()
@@ -306,7 +308,9 @@ func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
 	case "cancel":
 		go postToResponseURL(cb.ResponseURL, map[string]interface{}{
 			"deleteOriginal": true,
+			"responseType":   "ephemeral",
 			"channelId":      cb.Channel.ID,
+			"text":           "",
 		})
 		w.WriteHeader(http.StatusOK)
 
