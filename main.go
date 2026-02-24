@@ -283,11 +283,12 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	respJSON, _ := json.Marshal(resp)
+	log.Printf("Interactive response: %s", string(respJSON))
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
-
-	log.Printf("AMB shared - zones: %s, url: %s", zonesText, taskURL)
+	w.Write(respJSON)
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
