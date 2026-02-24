@@ -267,17 +267,19 @@ func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
 			selected = strings.Split(cb.ActionValue, ",")
 		}
 		msg := buildZoneMessage(selected)
-		msg["replaceOriginal"] = true
+		msg["deleteOriginal"] = true
 		msg["responseType"] = "ephemeral"
-		// Must POST to responseUrl to replace the message in Dooray
+		msg["channelId"] = cb.Channel.ID
+		msg["text"] = "AMB 공유 - Zone을 선택하세요"
 		go postToResponseURL(cb.ResponseURL, msg)
 		w.WriteHeader(http.StatusOK)
 
 	case "next":
 		if cb.ActionValue == "" {
 			msg := buildZoneMessage(nil)
-			msg["replaceOriginal"] = true
+			msg["deleteOriginal"] = true
 			msg["responseType"] = "ephemeral"
+			msg["channelId"] = cb.Channel.ID
 			msg["text"] = "⚠️ 최소 하나의 Zone을 선택해주세요"
 			go postToResponseURL(cb.ResponseURL, msg)
 			w.WriteHeader(http.StatusOK)
@@ -290,7 +292,7 @@ func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
 	case "cancel":
 		go postToResponseURL(cb.ResponseURL, map[string]interface{}{
 			"deleteOriginal": true,
-			"responseType":   "ephemeral",
+			"channelId":      cb.Channel.ID,
 		})
 		w.WriteHeader(http.StatusOK)
 
