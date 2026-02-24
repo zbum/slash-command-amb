@@ -256,6 +256,7 @@ func sendMessage(responseURL, channelID string, selectedZones []string, taskURL 
 	text := fmt.Sprintf("**[AMB 공유]**\n- Zone: %s\n- 업무 URL: %s", zonesText, taskURL)
 
 	msg := map[string]interface{}{
+		"channelId":    channelID,
 		"responseType": "inChannel",
 		"text":         text,
 	}
