@@ -88,6 +88,7 @@ const (
 	zonesCallbackPrefix  = "amb-zones:"
 	actionCallbackPrefix = "amb-action:"
 	submitCallbackPrefix = "amb-submit:"
+	resultCallbackPrefix = "amb-result:"
 )
 
 var appToken string
@@ -233,6 +234,12 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Button actions on result message
+	if strings.HasPrefix(cb.CallbackID, resultCallbackPrefix) {
+		handleResultAction(w, cb)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -311,6 +318,63 @@ func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
 			"responseType":   "ephemeral",
 			"channelId":      cb.Channel.ID,
 			"text":           "",
+		})
+		w.WriteHeader(http.StatusOK)
+
+	default:
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func handleResultAction(w http.ResponseWriter, cb ActionCallback) {
+	switch cb.ActionName {
+	case "delete":
+		go postToResponseURL(cb.ResponseURL, map[string]interface{}{
+			"deleteOriginal": true,
+			"responseType":   "inChannel",
+			"channelId":      cb.Channel.ID,
+			"text":           "",
+		})
+		w.WriteHeader(http.StatusOK)
+
+	case "confirm":
+		// Parse zones|taskURL|reason from button value
+		parts := strings.SplitN(cb.ActionValue, "|", 3)
+		if len(parts) < 2 {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		selectedZones := strings.Split(parts[0], ",")
+		taskURL := parts[1]
+		reason := ""
+		if len(parts) == 3 {
+			reason = parts[2]
+		}
+
+		zonesText := strings.Join(selectedZones, ", ")
+		fields := []map[string]interface{}{
+			{"title": "Zone", "value": zonesText, "short": true},
+			{"title": "업무 URL", "value": taskURL, "short": false},
+		}
+		if reason != "" {
+			fields = append(fields, map[string]interface{}{
+				"title": "배포 사유", "value": reason, "short": false,
+			})
+		}
+
+		go postToResponseURL(cb.ResponseURL, map[string]interface{}{
+			"channelId":      cb.Channel.ID,
+			"responseType":   "inChannel",
+			"deleteOriginal": true,
+			"text":           "AMB 공유",
+			"attachments": []map[string]interface{}{
+				{
+					"title":     "AMB 배포 공유",
+					"titleLink": taskURL,
+					"color":     "#4757C4",
+					"fields":    fields,
+				},
+			},
 		})
 		w.WriteHeader(http.StatusOK)
 
@@ -459,6 +523,9 @@ func sendMessage(responseURL, channelID string, selectedZones []string, taskURL,
 		})
 	}
 
+	// Encode zones|taskURL|reason in confirm button value to reconstruct message later
+	confirmValue := strings.Join(selectedZones, ",") + "|" + taskURL + "|" + reason
+
 	msg := map[string]interface{}{
 		"channelId":      channelID,
 		"responseType":   "inChannel",
@@ -470,6 +537,24 @@ func sendMessage(responseURL, channelID string, selectedZones []string, taskURL,
 				"titleLink": taskURL,
 				"color":     "#4757C4",
 				"fields":    fields,
+			},
+			{
+				"callbackId": resultCallbackPrefix,
+				"actions": []map[string]interface{}{
+					{
+						"type":  "button",
+						"name":  "confirm",
+						"text":  "확인",
+						"value": confirmValue,
+					},
+					{
+						"type":  "button",
+						"name":  "delete",
+						"text":  "삭제",
+						"style": "danger",
+						"value": "delete",
+					},
+				},
 			},
 		},
 	}
