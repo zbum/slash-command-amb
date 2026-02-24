@@ -90,7 +90,8 @@ if [ "${HTTP_CODE}" = "200" ]; then
   echo ""
   echo "==> Job '${JOB_NAME}'이 이미 존재합니다. config를 업데이트합니다..."
 
-  RESPONSE=$(curl -s -w "\n%{http_code}" \
+  TMPFILE=$(mktemp)
+  CODE=$(curl -s -o "${TMPFILE}" -w "%{http_code}" \
     --user "${JENKINS_USER}:${JENKINS_TOKEN}" \
     ${CRUMB_HEADER} \
     -X POST \
@@ -98,21 +99,21 @@ if [ "${HTTP_CODE}" = "200" ]; then
     -d "${CONFIG_XML}" \
     "${JENKINS_URL}/job/${JOB_NAME}/config.xml")
 
-  BODY=$(echo "${RESPONSE}" | head -n -1)
-  CODE=$(echo "${RESPONSE}" | tail -n 1)
-
   if [ "${CODE}" = "200" ]; then
     echo "    Job 업데이트 완료!"
   else
     echo "    업데이트 실패 (HTTP ${CODE})"
-    echo "    ${BODY}"
+    cat "${TMPFILE}"
+    rm -f "${TMPFILE}"
     exit 1
   fi
+  rm -f "${TMPFILE}"
 else
   echo ""
   echo "==> Job '${JOB_NAME}' 생성 중..."
 
-  RESPONSE=$(curl -s -w "\n%{http_code}" \
+  TMPFILE=$(mktemp)
+  CODE=$(curl -s -o "${TMPFILE}" -w "%{http_code}" \
     --user "${JENKINS_USER}:${JENKINS_TOKEN}" \
     ${CRUMB_HEADER} \
     -X POST \
@@ -120,16 +121,15 @@ else
     -d "${CONFIG_XML}" \
     "${JENKINS_URL}/createItem?name=${JOB_NAME}")
 
-  BODY=$(echo "${RESPONSE}" | head -n -1)
-  CODE=$(echo "${RESPONSE}" | tail -n 1)
-
   if [ "${CODE}" = "200" ]; then
     echo "    Job 생성 완료!"
   else
     echo "    생성 실패 (HTTP ${CODE})"
-    echo "    ${BODY}"
+    cat "${TMPFILE}"
+    rm -f "${TMPFILE}"
     exit 1
   fi
+  rm -f "${TMPFILE}"
 fi
 
 echo ""
