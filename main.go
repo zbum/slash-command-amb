@@ -255,19 +255,24 @@ func toggleZone(selected []string, zone string) []string {
 }
 
 func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
-	selected := parseSelectedZones(cb.CallbackID)
+	// State is encoded in actionValue, not callbackId
+	// toggle: actionValue = resulting zones after toggle (comma-separated)
+	// next: actionValue = current selected zones (comma-separated)
+	// cancel: actionValue = "cancel"
 
 	switch cb.ActionName {
 	case "toggle":
-		selected = toggleZone(selected, cb.ActionValue)
+		var selected []string
+		if cb.ActionValue != "" {
+			selected = strings.Split(cb.ActionValue, ",")
+		}
 		msg := buildZoneMessage(selected)
 		msg["replaceOriginal"] = true
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(msg)
 
 	case "next":
-		if len(selected) == 0 {
-			// No zones selected - show warning by re-rendering with a hint
+		if cb.ActionValue == "" {
 			msg := buildZoneMessage(nil)
 			msg["replaceOriginal"] = true
 			msg["text"] = "⚠️ 최소 하나의 Zone을 선택해주세요"
@@ -275,7 +280,7 @@ func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
 			json.NewEncoder(w).Encode(msg)
 			return
 		}
-		// Open dialog with URL input only
+		selected := strings.Split(cb.ActionValue, ",")
 		go openDialog(cb.Tenant.Domain, cb.Channel.ID, cb.CmdToken, cb.TriggerID, selected)
 		w.WriteHeader(http.StatusOK)
 
@@ -329,10 +334,12 @@ func buildZoneMessage(selectedZones []string) map[string]interface{} {
 
 	zoneButtons := make([]map[string]interface{}, 0, len(zones))
 	for _, zone := range zones {
+		// Compute resulting state after toggling this zone
+		toggled := toggleZone(append([]string{}, selectedZones...), zone)
 		btn := map[string]interface{}{
 			"type":  "button",
 			"name":  "toggle",
-			"value": zone,
+			"value": strings.Join(toggled, ","),
 		}
 		if selectedSet[zone] {
 			btn["text"] = "✓ " + zone
@@ -355,18 +362,18 @@ func buildZoneMessage(selectedZones []string) map[string]interface{} {
 	return map[string]interface{}{
 		"attachments": []map[string]interface{}{
 			{
-				"callbackId": zonesCallbackPrefix + zonesStr,
+				"callbackId": zonesCallbackPrefix,
 				"actions":    zoneButtons,
 			},
 			{
-				"callbackId": actionCallbackPrefix + zonesStr,
+				"callbackId": actionCallbackPrefix,
 				"text":       statusText,
 				"actions": []map[string]interface{}{
 					{
 						"type":  "button",
 						"name":  "next",
 						"text":  "다음",
-						"value": "next",
+						"value": zonesStr,
 						"style": "primary",
 					},
 					{
