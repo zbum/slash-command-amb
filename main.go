@@ -26,10 +26,9 @@ type CommandRequest struct {
 	TriggerID    string `json:"triggerId"`
 }
 
-// DialogSubmission is the JSON payload sent when a user submits a dialog.
-type DialogSubmission struct {
-	Type    string `json:"type"`
-	Tenant  struct {
+// ActionCallback is the JSON payload sent when a user clicks a button action.
+type ActionCallback struct {
+	Tenant struct {
 		ID     string `json:"id"`
 		Domain string `json:"domain"`
 	} `json:"tenant"`
@@ -40,11 +39,14 @@ type DialogSubmission struct {
 	User struct {
 		ID string `json:"id"`
 	} `json:"user"`
-	ResponseURL    string            `json:"responseUrl"`
-	CmdToken       string            `json:"cmdToken"`
-	UpdateCmdToken string            `json:"updateCmdToken"`
-	CallbackID     string            `json:"callbackId"`
-	Submission     map[string]string `json:"submission"`
+	ResponseURL string            `json:"responseUrl"`
+	CmdToken    string            `json:"cmdToken"`
+	TriggerID   string            `json:"triggerId"`
+	CallbackID  string            `json:"callbackId"`
+	ActionName  string            `json:"actionName"`
+	ActionValue string            `json:"actionValue"`
+	Type        string            `json:"type"`
+	Submission  map[string]string `json:"submission"`
 }
 
 type DialogOpenRequest struct {
@@ -82,7 +84,11 @@ type Option struct {
 
 var zones = []string{"pubo", "fino", "govo", "govi", "pppng"}
 
-const callbackID = "amb-share"
+const (
+	zonesCallbackPrefix  = "amb-zones:"
+	actionCallbackPrefix = "amb-action:"
+	submitCallbackPrefix = "amb-submit:"
+)
 
 var appToken string
 
@@ -98,7 +104,7 @@ func main() {
 	}
 
 	http.HandleFunc("/command", handleCommand)
-	http.HandleFunc("/interactive", handleInteractive)
+	http.HandleFunc("POST /interactive", handleInteractive)
 	http.HandleFunc("/health", handleHealth)
 
 	log.Printf("Server starting on :%s", port)
@@ -106,10 +112,6 @@ func main() {
 }
 
 func handleCommand(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -117,8 +119,6 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-
-	log.Printf("Command request: %s", string(body))
 
 	var req CommandRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -132,46 +132,35 @@ func handleCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go openDialog(req)
+	msg := buildZoneMessage(nil)
+	msg["responseType"] = "ephemeral"
+	msg["text"] = "AMB 공유 - Zone을 선택하세요"
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{})
+	json.NewEncoder(w).Encode(msg)
 }
 
-func openDialog(req CommandRequest) {
-	elements := make([]Element, 0, len(zones)+1)
-
-	for _, zone := range zones {
-		elements = append(elements, Element{
-			Type:  "select",
-			Label: zone,
-			Name:  "zone_" + zone,
-			Value: "false",
-			Options: []Option{
-				{Label: "O", Value: "true"},
-				{Label: "X", Value: "false"},
-			},
-		})
-	}
-
-	elements = append(elements, Element{
-		Type:        "text",
-		Subtype:     "url",
-		Label:       "업무 URL",
-		Name:        "task_url",
-		Placeholder: "업무 URL을 입력하세요",
-	})
+func openDialog(tenantDomain, channelID, cmdToken, triggerID string, selectedZones []string) {
+	cbID := submitCallbackPrefix + strings.Join(selectedZones, ",")
 
 	dialogReq := DialogOpenRequest{
-		Token:      req.CmdToken,
-		TriggerID:  req.TriggerID,
-		CallbackID: callbackID,
+		Token:      cmdToken,
+		TriggerID:  triggerID,
+		CallbackID: cbID,
 		Dialog: Dialog{
-			CallbackID:  callbackID,
+			CallbackID:  cbID,
 			Title:       "AMB 공유",
 			SubmitLabel: "공유",
-			Elements:    elements,
+			Elements: []Element{
+				{
+					Type:        "text",
+					Subtype:     "url",
+					Label:       "업무 URL",
+					Name:        "task_url",
+					Placeholder: "업무 URL을 입력하세요",
+				},
+			},
 		},
 	}
 
@@ -181,7 +170,7 @@ func openDialog(req CommandRequest) {
 		return
 	}
 
-	url := fmt.Sprintf("https://%s/messenger/api/channels/%s/dialogs", req.TenantDomain, req.ChannelID)
+	url := fmt.Sprintf("https://%s/messenger/api/channels/%s/dialogs", tenantDomain, channelID)
 
 	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
@@ -189,7 +178,7 @@ func openDialog(req CommandRequest) {
 		return
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("token", req.CmdToken)
+	httpReq.Header.Set("token", cmdToken)
 
 	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
@@ -198,8 +187,10 @@ func openDialog(req CommandRequest) {
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
-	log.Printf("Dialog open response [%d]: %s", resp.StatusCode, string(respBody))
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		log.Printf("Dialog open failed [%d]: %s", resp.StatusCode, string(respBody))
+	}
 }
 
 func handleInteractive(w http.ResponseWriter, r *http.Request) {
@@ -215,47 +206,105 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	log.Printf("Interactive request: %s", string(body))
-
-	var sub DialogSubmission
-	if err := json.Unmarshal(body, &sub); err != nil {
+	var cb ActionCallback
+	if err := json.Unmarshal(body, &cb); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("[DEBUG] type=%s callbackId=%s (expected=%s)", sub.Type, sub.CallbackID, callbackID)
+	log.Printf("Interactive: type=%s callbackId=%s actionName=%s actionValue=%s", cb.Type, cb.CallbackID, cb.ActionName, cb.ActionValue)
 
-	if sub.Type != "dialog_submission" || sub.CallbackID != callbackID {
-		log.Printf("[DEBUG] skipped: type or callbackId mismatch")
-		w.WriteHeader(http.StatusOK)
+	// Dialog submission
+	if cb.Type == "dialog_submission" && strings.HasPrefix(cb.CallbackID, submitCallbackPrefix) {
+		handleDialogSubmission(w, cb)
 		return
 	}
 
-	selectedZones := make([]string, 0)
-	for _, zone := range zones {
-		val := sub.Submission["zone_"+zone]
-		log.Printf("[DEBUG] zone_%s = %s", zone, val)
-		if val == "true" {
-			selectedZones = append(selectedZones, zone)
-		}
+	// Button actions on zone selection message
+	if strings.HasPrefix(cb.CallbackID, zonesCallbackPrefix) || strings.HasPrefix(cb.CallbackID, actionCallbackPrefix) {
+		handleButtonAction(w, cb)
+		return
 	}
 
-	taskURL := sub.Submission["task_url"]
-	log.Printf("[DEBUG] selectedZones=%v taskURL=%s", selectedZones, taskURL)
+	w.WriteHeader(http.StatusOK)
+}
+
+func parseSelectedZones(callbackID string) []string {
+	// Extract zones from callbackId like "amb-zones:pubo,fino" or "amb-action:pubo,fino"
+	var raw string
+	if strings.HasPrefix(callbackID, zonesCallbackPrefix) {
+		raw = strings.TrimPrefix(callbackID, zonesCallbackPrefix)
+	} else if strings.HasPrefix(callbackID, actionCallbackPrefix) {
+		raw = strings.TrimPrefix(callbackID, actionCallbackPrefix)
+	} else if strings.HasPrefix(callbackID, submitCallbackPrefix) {
+		raw = strings.TrimPrefix(callbackID, submitCallbackPrefix)
+	}
+	if raw == "" {
+		return nil
+	}
+	return strings.Split(raw, ",")
+}
+
+func toggleZone(selected []string, zone string) []string {
+	for i, z := range selected {
+		if z == zone {
+			return append(selected[:i], selected[i+1:]...)
+		}
+	}
+	return append(selected, zone)
+}
+
+func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
+	selected := parseSelectedZones(cb.CallbackID)
+
+	switch cb.ActionName {
+	case "toggle":
+		selected = toggleZone(selected, cb.ActionValue)
+		msg := buildZoneMessage(selected)
+		msg["replaceOriginal"] = true
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(msg)
+
+	case "next":
+		if len(selected) == 0 {
+			// No zones selected - show warning by re-rendering with a hint
+			msg := buildZoneMessage(nil)
+			msg["replaceOriginal"] = true
+			msg["text"] = "⚠️ 최소 하나의 Zone을 선택해주세요"
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(msg)
+			return
+		}
+		// Open dialog with URL input only
+		go openDialog(cb.Tenant.Domain, cb.Channel.ID, cb.CmdToken, cb.TriggerID, selected)
+		w.WriteHeader(http.StatusOK)
+
+	case "cancel":
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"deleteOriginal": true,
+		})
+
+	default:
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func handleDialogSubmission(w http.ResponseWriter, cb ActionCallback) {
+	selectedZones := parseSelectedZones(cb.CallbackID)
+	taskURL := cb.Submission["task_url"]
 
 	if len(selectedZones) == 0 {
-		log.Printf("[DEBUG] no zones selected, returning error")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"errors": []map[string]string{
-				{"name": "zone_pubo", "error": "최소 하나의 zone을 선택해주세요"},
+				{"name": "task_url", "error": "Zone 선택이 유실되었습니다. 다시 시도해주세요."},
 			},
 		})
 		return
 	}
 
 	if taskURL == "" {
-		log.Printf("[DEBUG] no taskURL, returning error")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"errors": []map[string]string{
@@ -265,13 +314,72 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// dialog_submission 응답: 빈 200으로 다이얼로그 닫기
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("{}"))
 
-	// responseUrl webhook으로 채널에 메시지 전송
-	go sendMessage(sub.ResponseURL, sub.Channel.ID, selectedZones, taskURL)
+	go sendMessage(cb.ResponseURL, cb.Channel.ID, selectedZones, taskURL)
+}
+
+func buildZoneMessage(selectedZones []string) map[string]interface{} {
+	selectedSet := make(map[string]bool)
+	for _, z := range selectedZones {
+		selectedSet[z] = true
+	}
+
+	zoneButtons := make([]map[string]interface{}, 0, len(zones))
+	for _, zone := range zones {
+		btn := map[string]interface{}{
+			"type":  "button",
+			"name":  "toggle",
+			"value": zone,
+		}
+		if selectedSet[zone] {
+			btn["text"] = "✓ " + zone
+			btn["style"] = "primary"
+		} else {
+			btn["text"] = zone
+		}
+		zoneButtons = append(zoneButtons, btn)
+	}
+
+	zonesStr := strings.Join(selectedZones, ",")
+
+	var statusText string
+	if len(selectedZones) == 0 {
+		statusText = "선택된 Zone: 없음"
+	} else {
+		statusText = "선택된 Zone: " + strings.Join(selectedZones, ", ")
+	}
+
+	return map[string]interface{}{
+		"attachments": []map[string]interface{}{
+			{
+				"callbackId": zonesCallbackPrefix + zonesStr,
+				"actions":    zoneButtons,
+			},
+			{
+				"callbackId": actionCallbackPrefix + zonesStr,
+				"text":       statusText,
+				"actions": []map[string]interface{}{
+					{
+						"type":  "button",
+						"name":  "next",
+						"text":  "다음",
+						"value": "next",
+						"style": "primary",
+					},
+					{
+						"type":  "button",
+						"name":  "cancel",
+						"text":  "취소",
+						"value": "cancel",
+						"style": "danger",
+					},
+				},
+			},
+		},
+	}
 }
 
 func sendMessage(responseURL, channelID string, selectedZones []string, taskURL string) {
@@ -309,8 +417,6 @@ func sendMessage(responseURL, channelID string, selectedZones []string, taskURL 
 		return
 	}
 
-	log.Printf("Sending to responseUrl: %s", string(payload))
-
 	resp, err := http.Post(responseURL, "application/json", bytes.NewReader(payload))
 	if err != nil {
 		log.Printf("Failed to send message: %v", err)
@@ -318,8 +424,10 @@ func sendMessage(responseURL, channelID string, selectedZones []string, taskURL 
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
-	log.Printf("responseUrl response [%d]: %s", resp.StatusCode, string(respBody))
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		log.Printf("sendMessage failed [%d]: %s", resp.StatusCode, string(respBody))
+	}
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
