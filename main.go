@@ -329,13 +329,13 @@ func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
 func handleResultAction(w http.ResponseWriter, cb ActionCallback) {
 	switch cb.ActionName {
 	case "delete":
-		go postToResponseURL(cb.ResponseURL, map[string]interface{}{
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
 			"deleteOriginal": true,
-			"responseType":   "inChannel",
+			"responseType":   "ephemeral",
 			"channelId":      cb.Channel.ID,
-			"text":           "",
+			"text":           "AMB 공유 메시지가 삭제되었습니다.",
 		})
-		w.WriteHeader(http.StatusOK)
 
 	case "confirm":
 		// Parse zones|taskURL|reason from button value
@@ -362,7 +362,8 @@ func handleResultAction(w http.ResponseWriter, cb ActionCallback) {
 			})
 		}
 
-		go postToResponseURL(cb.ResponseURL, map[string]interface{}{
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
 			"channelId":      cb.Channel.ID,
 			"responseType":   "inChannel",
 			"deleteOriginal": true,
@@ -376,7 +377,6 @@ func handleResultAction(w http.ResponseWriter, cb ActionCallback) {
 				},
 			},
 		})
-		w.WriteHeader(http.StatusOK)
 
 	default:
 		w.WriteHeader(http.StatusOK)
