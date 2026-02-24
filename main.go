@@ -268,8 +268,9 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 	zonesText := strings.Join(selectedZones, ", ")
 
 	resp := map[string]interface{}{
-		"responseType": "inChannel",
-		"text":         "AMB 공유",
+		"responseType":   "inChannel",
+		"deleteOriginal": true,
+		"text":           "AMB 공유",
 		"attachments": []map[string]interface{}{
 			{
 				"title":     "AMB 배포 공유",
