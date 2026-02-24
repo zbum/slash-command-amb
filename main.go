@@ -160,6 +160,13 @@ func openDialog(tenantDomain, channelID, cmdToken, triggerID string, selectedZon
 					Name:        "task_url",
 					Placeholder: "업무 URL을 입력하세요",
 				},
+				{
+					Type:        "textarea",
+					Label:       "배포 사유",
+					Name:        "reason",
+					Placeholder: "배포 사유를 입력하세요",
+					Optional:    true,
+				},
 			},
 		},
 	}
@@ -333,6 +340,7 @@ func postToResponseURL(responseURL string, msg map[string]interface{}) {
 func handleDialogSubmission(w http.ResponseWriter, cb ActionCallback) {
 	selectedZones := parseSelectedZones(cb.CallbackID)
 	taskURL := cb.Submission["task_url"]
+	reason := cb.Submission["reason"]
 
 	if len(selectedZones) == 0 {
 		w.Header().Set("Content-Type", "application/json")
@@ -358,7 +366,7 @@ func handleDialogSubmission(w http.ResponseWriter, cb ActionCallback) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("{}"))
 
-	go sendMessage(cb.ResponseURL, cb.Channel.ID, selectedZones, taskURL)
+	go sendMessage(cb.ResponseURL, cb.Channel.ID, selectedZones, taskURL, reason)
 }
 
 func buildZoneMessage(selectedZones []string) map[string]interface{} {
@@ -424,8 +432,28 @@ func buildZoneMessage(selectedZones []string) map[string]interface{} {
 	}
 }
 
-func sendMessage(responseURL, channelID string, selectedZones []string, taskURL string) {
+func sendMessage(responseURL, channelID string, selectedZones []string, taskURL, reason string) {
 	zonesText := strings.Join(selectedZones, ", ")
+
+	fields := []map[string]interface{}{
+		{
+			"title": "Zone",
+			"value": zonesText,
+			"short": true,
+		},
+		{
+			"title": "업무 URL",
+			"value": taskURL,
+			"short": false,
+		},
+	}
+	if reason != "" {
+		fields = append(fields, map[string]interface{}{
+			"title": "배포 사유",
+			"value": reason,
+			"short": false,
+		})
+	}
 
 	msg := map[string]interface{}{
 		"channelId":      channelID,
@@ -437,18 +465,7 @@ func sendMessage(responseURL, channelID string, selectedZones []string, taskURL 
 				"title":     "AMB 배포 공유",
 				"titleLink": taskURL,
 				"color":     "#4757C4",
-				"fields": []map[string]interface{}{
-					{
-						"title": "Zone",
-						"value": zonesText,
-						"short": true,
-					},
-					{
-						"title": "업무 URL",
-						"value": taskURL,
-						"short": false,
-					},
-				},
+				"fields":    fields,
 			},
 		},
 	}
