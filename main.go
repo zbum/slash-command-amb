@@ -278,8 +278,8 @@ func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
 		msg["responseType"] = "ephemeral"
 		msg["channelId"] = cb.Channel.ID
 		msg["text"] = "AMB 공유 - Zone을 선택하세요"
-		go postToResponseURL(cb.ResponseURL, msg)
-		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(msg)
 
 	case "next":
 		if cb.ActionValue == "" {
@@ -288,8 +288,8 @@ func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
 			msg["responseType"] = "ephemeral"
 			msg["channelId"] = cb.Channel.ID
 			msg["text"] = "⚠️ 최소 하나의 Zone을 선택해주세요"
-			go postToResponseURL(cb.ResponseURL, msg)
-			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(msg)
 			return
 		}
 		selected := strings.Split(cb.ActionValue, ",")
