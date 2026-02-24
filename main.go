@@ -268,12 +268,30 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 
 func sendMessage(responseURL, channelID string, selectedZones []string, taskURL string) {
 	zonesText := strings.Join(selectedZones, ", ")
-	text := fmt.Sprintf("[AMB 공유]\n- Zone: %s\n- 업무 URL: %s", zonesText, taskURL)
 
 	msg := map[string]interface{}{
 		"channelId":    channelID,
 		"responseType": "inChannel",
-		"text":         text,
+		"text":         "AMB 공유",
+		"attachments": []map[string]interface{}{
+			{
+				"title":     "AMB 배포 공유",
+				"titleLink": taskURL,
+				"color":     "#4757C4",
+				"fields": []map[string]interface{}{
+					{
+						"title": "Zone",
+						"value": zonesText,
+						"short": true,
+					},
+					{
+						"title": "업무 URL",
+						"value": taskURL,
+						"short": false,
+					},
+				},
+			},
+		},
 	}
 
 	payload, err := json.Marshal(msg)
@@ -281,6 +299,8 @@ func sendMessage(responseURL, channelID string, selectedZones []string, taskURL 
 		log.Printf("Failed to marshal message: %v", err)
 		return
 	}
+
+	log.Printf("Sending to responseUrl: %s", string(payload))
 
 	resp, err := http.Post(responseURL, "application/json", bytes.NewReader(payload))
 	if err != nil {
