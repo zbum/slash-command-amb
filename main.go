@@ -223,21 +223,28 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[DEBUG] type=%s callbackId=%s (expected=%s)", sub.Type, sub.CallbackID, callbackID)
+
 	if sub.Type != "dialog_submission" || sub.CallbackID != callbackID {
+		log.Printf("[DEBUG] skipped: type or callbackId mismatch")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
 	selectedZones := make([]string, 0)
 	for _, zone := range zones {
-		if sub.Submission["zone_"+zone] == "true" {
+		val := sub.Submission["zone_"+zone]
+		log.Printf("[DEBUG] zone_%s = %s", zone, val)
+		if val == "true" {
 			selectedZones = append(selectedZones, zone)
 		}
 	}
 
 	taskURL := sub.Submission["task_url"]
+	log.Printf("[DEBUG] selectedZones=%v taskURL=%s", selectedZones, taskURL)
 
 	if len(selectedZones) == 0 {
+		log.Printf("[DEBUG] no zones selected, returning error")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"errors": []map[string]string{
@@ -248,6 +255,7 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if taskURL == "" {
+		log.Printf("[DEBUG] no taskURL, returning error")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"errors": []map[string]string{
