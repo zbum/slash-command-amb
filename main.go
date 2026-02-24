@@ -331,11 +331,10 @@ func handleResultAction(w http.ResponseWriter, cb ActionCallback) {
 	case "delete":
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"replaceOriginal": true,
-			"responseType":    "ephemeral",
-			"channelId":       cb.Channel.ID,
-			"text":            "AMB 공유 메시지가 삭제되었습니다.",
-			"attachments":     nil,
+			"deleteOriginal": true,
+			"responseType":   "inChannel",
+			"channelId":      cb.Channel.ID,
+			"text":           "AMB 공유 메시지가 삭제되었습니다.",
 		})
 
 	case "confirm":
