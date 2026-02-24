@@ -265,9 +265,20 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// dialog_submission 응답: 빈 200으로 다이얼로그 닫기
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("{}"))
+
+	// responseUrl webhook으로 채널에 메시지 전송
+	go sendMessage(sub.ResponseURL, sub.Channel.ID, selectedZones, taskURL)
+}
+
+func sendMessage(responseURL, channelID string, selectedZones []string, taskURL string) {
 	zonesText := strings.Join(selectedZones, ", ")
 
-	resp := map[string]interface{}{
+	msg := map[string]interface{}{
+		"channelId":      channelID,
 		"responseType":   "inChannel",
 		"deleteOriginal": true,
 		"text":           "AMB 공유",
@@ -292,12 +303,23 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	respJSON, _ := json.Marshal(resp)
-	log.Printf("Interactive response: %s", string(respJSON))
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("Failed to marshal message: %v", err)
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(respJSON)
+	log.Printf("Sending to responseUrl: %s", string(payload))
+
+	resp, err := http.Post(responseURL, "application/json", bytes.NewReader(payload))
+	if err != nil {
+		log.Printf("Failed to send message: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	log.Printf("responseUrl response [%d]: %s", resp.StatusCode, string(respBody))
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
