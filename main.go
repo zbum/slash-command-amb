@@ -286,7 +286,14 @@ func handleButtonAction(w http.ResponseWriter, cb ActionCallback) {
 			return
 		}
 		selected := strings.Split(cb.ActionValue, ",")
-		go openDialog(cb.Tenant.Domain, cb.Channel.ID, cb.CmdToken, cb.TriggerID, selected)
+		// Delete zone selection message, then open dialog
+		go func() {
+			postToResponseURL(cb.ResponseURL, map[string]interface{}{
+				"deleteOriginal": true,
+				"channelId":      cb.Channel.ID,
+			})
+			openDialog(cb.Tenant.Domain, cb.Channel.ID, cb.CmdToken, cb.TriggerID, selected)
+		}()
 		w.WriteHeader(http.StatusOK)
 
 	case "cancel":
