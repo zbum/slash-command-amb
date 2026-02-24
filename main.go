@@ -257,20 +257,9 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 다이얼로그 닫기
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{})
-
-	// responseUrl로 채널에 메시지 전송
-	go sendMessage(sub.ResponseURL, sub.Channel.ID, selectedZones, taskURL)
-}
-
-func sendMessage(responseURL, channelID string, selectedZones []string, taskURL string) {
 	zonesText := strings.Join(selectedZones, ", ")
 
-	msg := map[string]interface{}{
-		"channelId":    channelID,
+	resp := map[string]interface{}{
 		"responseType": "inChannel",
 		"text":         "AMB 공유",
 		"attachments": []map[string]interface{}{
@@ -294,23 +283,11 @@ func sendMessage(responseURL, channelID string, selectedZones []string, taskURL 
 		},
 	}
 
-	payload, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("Failed to marshal message: %v", err)
-		return
-	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
 
-	log.Printf("Sending to responseUrl: %s", string(payload))
-
-	resp, err := http.Post(responseURL, "application/json", bytes.NewReader(payload))
-	if err != nil {
-		log.Printf("Failed to send message: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	log.Printf("responseUrl response [%d]: %s", resp.StatusCode, string(respBody))
+	log.Printf("AMB shared - zones: %s, url: %s", zonesText, taskURL)
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
