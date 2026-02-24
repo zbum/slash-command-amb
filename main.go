@@ -263,14 +263,15 @@ func handleInteractive(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{})
 
 	// responseUrl로 채널에 메시지 전송
-	go sendMessage(sub.ResponseURL, sub.Channel.ID, sub.CmdToken, sub.Tenant.Domain, selectedZones, taskURL)
+	go sendMessage(sub.ResponseURL, sub.Channel.ID, selectedZones, taskURL)
 }
 
-func sendMessage(responseURL, channelID, cmdToken, tenantDomain string, selectedZones []string, taskURL string) {
+func sendMessage(responseURL, channelID string, selectedZones []string, taskURL string) {
 	zonesText := strings.Join(selectedZones, ", ")
 	text := fmt.Sprintf("[AMB 공유]\n- Zone: %s\n- 업무 URL: %s", zonesText, taskURL)
 
 	msg := map[string]interface{}{
+		"channelId":    channelID,
 		"responseType": "inChannel",
 		"text":         text,
 	}
@@ -281,61 +282,15 @@ func sendMessage(responseURL, channelID, cmdToken, tenantDomain string, selected
 		return
 	}
 
-	httpReq, err := http.NewRequest(http.MethodPost, responseURL, bytes.NewReader(payload))
+	resp, err := http.Post(responseURL, "application/json", bytes.NewReader(payload))
 	if err != nil {
-		log.Printf("Failed to create message request: %v", err)
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("token", cmdToken)
-
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		log.Printf("Failed to send message via responseUrl: %v", err)
+		log.Printf("Failed to send message: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	log.Printf("responseUrl response [%d]: %s", resp.StatusCode, string(respBody))
-
-	// responseUrl 실패 시 Web API로 재시도
-	if resp.StatusCode != 200 {
-		log.Printf("responseUrl failed, trying web API...")
-		sendViaWebAPI(tenantDomain, channelID, cmdToken, text)
-	}
-}
-
-func sendViaWebAPI(tenantDomain, channelID, cmdToken, text string) {
-	url := fmt.Sprintf("https://%s/messenger/api/channels/%s/logs", tenantDomain, channelID)
-
-	msg := map[string]interface{}{
-		"text": text,
-	}
-
-	payload, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("Failed to marshal web API message: %v", err)
-		return
-	}
-
-	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
-	if err != nil {
-		log.Printf("Failed to create web API request: %v", err)
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("token", cmdToken)
-
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		log.Printf("Failed to send via web API: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	log.Printf("Web API response [%d]: %s", resp.StatusCode, string(respBody))
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
