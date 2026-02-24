@@ -335,6 +335,7 @@ func handleResultAction(w http.ResponseWriter, cb ActionCallback) {
 			"responseType":    "ephemeral",
 			"channelId":       cb.Channel.ID,
 			"text":            "AMB 공유 메시지가 삭제되었습니다.",
+			"attachments":     nil,
 		})
 
 	case "confirm":
