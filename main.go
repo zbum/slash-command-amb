@@ -624,10 +624,11 @@ func sendWebhookSummary(selectedZones []string, taskURL, reason string) {
 	}
 
 	zonesText := strings.Join(selectedZones, ", ")
-	text := fmt.Sprintf("Zone: %s\n업무 URL: %s", zonesText, taskURL)
+	text := fmt.Sprintf("배포존\n    %s", zonesText)
 	if reason != "" {
-		text += fmt.Sprintf("\n배포 사유: %s", reason)
+		text += fmt.Sprintf("\n\n배포사유\n    %s", reason)
 	}
+	text += fmt.Sprintf("\n\n%s", taskURL)
 
 	msg := &hook.WebhookMessage{
 		BotName: "AMB Bot",
