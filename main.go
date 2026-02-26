@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/dooray-go/dooray/hook"
 )
 
 // CommandRequest is the JSON payload sent by Dooray when a slash command is invoked.
@@ -91,7 +93,10 @@ const (
 	resultCallbackPrefix = "amb-result:"
 )
 
-var appToken string
+var (
+	appToken   string
+	webhookURL string
+)
 
 func main() {
 	port := os.Getenv("PORT")
@@ -102,6 +107,11 @@ func main() {
 	appToken = os.Getenv("DOORAY_APP_TOKEN")
 	if appToken == "" {
 		log.Println("WARNING: DOORAY_APP_TOKEN is not set, token validation disabled")
+	}
+
+	webhookURL = os.Getenv("DOORAY_WEBHOOK_URL")
+	if webhookURL == "" {
+		log.Println("WARNING: DOORAY_WEBHOOK_URL is not set, webhook notification disabled")
 	}
 
 	http.HandleFunc("/command", handleCommand)
@@ -378,6 +388,8 @@ func handleResultAction(w http.ResponseWriter, cb ActionCallback) {
 			},
 		})
 
+		go sendWebhookSummary(selectedZones, taskURL, reason)
+
 	default:
 		w.WriteHeader(http.StatusOK)
 	}
@@ -575,6 +587,27 @@ func sendMessage(responseURL, channelID string, selectedZones []string, taskURL,
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		log.Printf("sendMessage failed [%d]: %s", resp.StatusCode, string(respBody))
+	}
+}
+
+func sendWebhookSummary(selectedZones []string, taskURL, reason string) {
+	if webhookURL == "" {
+		return
+	}
+
+	zonesText := strings.Join(selectedZones, ", ")
+	text := fmt.Sprintf("Zone: %s\n업무 URL: %s", zonesText, taskURL)
+	if reason != "" {
+		text += fmt.Sprintf("\n배포 사유: %s", reason)
+	}
+
+	msg := &hook.WebhookMessage{
+		BotName: "AMB Bot",
+		Text:    text,
+	}
+
+	if err := hook.PostWebhook(webhookURL, msg); err != nil {
+		log.Printf("Failed to send webhook summary: %v", err)
 	}
 }
 
