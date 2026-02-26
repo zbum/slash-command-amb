@@ -347,6 +347,29 @@ func handleResultAction(w http.ResponseWriter, cb ActionCallback) {
 			"text":           "AMB 공유 메시지가 삭제되었습니다.",
 		})
 
+	case "share":
+		// Parse zones|taskURL|reason from button value
+		parts := strings.SplitN(cb.ActionValue, "|", 3)
+		if len(parts) < 2 {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		selectedZones := strings.Split(parts[0], ",")
+		taskURL := parts[1]
+		reason := ""
+		if len(parts) == 3 {
+			reason = parts[2]
+		}
+
+		go sendWebhookSummary(selectedZones, taskURL, reason)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"responseType": "ephemeral",
+			"channelId":    cb.Channel.ID,
+			"text":         "AMB 공유가 전송되었습니다.",
+		})
+
 	case "confirm":
 		// Parse zones|taskURL|reason from button value
 		parts := strings.SplitN(cb.ActionValue, "|", 3)
@@ -387,8 +410,6 @@ func handleResultAction(w http.ResponseWriter, cb ActionCallback) {
 				},
 			},
 		})
-
-		go sendWebhookSummary(selectedZones, taskURL, reason)
 
 	default:
 		w.WriteHeader(http.StatusOK)
@@ -553,6 +574,13 @@ func sendMessage(responseURL, channelID string, selectedZones []string, taskURL,
 			{
 				"callbackId": resultCallbackPrefix,
 				"actions": []map[string]interface{}{
+					{
+						"type":  "button",
+						"name":  "share",
+						"text":  "AMB공유",
+						"value": confirmValue,
+						"style": "primary",
+					},
 					{
 						"type":  "button",
 						"name":  "confirm",
